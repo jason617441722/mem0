@@ -933,6 +933,7 @@ class Memory(MemoryBase):
         )
 
         # Map UUIDs to integers (anti-hallucination)
+        # 减少 LLM 手写复杂 UUID、写错 UUID 的机会。
         existing_memories = []
         uuid_mapping = {}
         for idx, mem in enumerate(existing_results):
@@ -940,9 +941,16 @@ class Memory(MemoryBase):
             existing_memories.append({"id": str(idx), "text": mem.payload.get("data", "")})
 
         # Phase 2: LLM extraction (single call)
+        # agent level memory not user's memory
         is_agent_scoped = bool(filters.get("agent_id")) and not filters.get("user_id")
+#         这个提示词会告诉 LLM：
+# - 从输入对话中提取哪些信息；
+# - 哪些内容值得保存；
+# - 如何生成记忆文本；
+# - 使用什么结构返回结果。
         system_prompt = ADDITIVE_EXTRACTION_PROMPT
         if is_agent_scoped:
+            #如果是 agent 级记忆，就在默认提示词后面追加一段专门针对 agent 的说明。
             system_prompt += AGENT_CONTEXT_SUFFIX
 
         custom_instr = prompt or self.custom_instructions
@@ -1006,6 +1014,7 @@ class Memory(MemoryBase):
 
         # Phase 4: Per-memory CPU processing + Phase 5: Hash dedup
         # Build set of existing hashes for dedup
+        # exsiting memories
         existing_hashes = set()
         for mem in existing_results:
             h = mem.payload.get("hash") if hasattr(mem, "payload") and mem.payload else None
@@ -1099,9 +1108,15 @@ class Memory(MemoryBase):
 
         # Phase 7: Batch entity linking
         try:
+            # records.append((memory_id, text, embed_map[text], mem_metadata))
             all_texts = [r[1] for r in persisted_records]
             all_entities = extract_entities_batch(all_texts)
-
+        #   [
+        #     ("Alice", "PERSON"),
+        #     ("Bloomington", "GPE"),
+        #     ("2025", "DATE")
+        #   ],
+        
             # 7a: Global dedup — collect unique entities across all memories
             global_entities = {}  # normalized_key -> (entity_type, entity_text, set of memory_ids)
             for idx, (memory_id, text, embedding, payload) in enumerate(persisted_records):
@@ -1744,6 +1759,12 @@ class Memory(MemoryBase):
 
         return original_memories
 
+
+# {
+#     "m1": 0.450,
+#     "m2": 0.450,
+#     "m3": 0.300
+# }
     def _compute_entity_boosts(self, query_entities, filters):
         """Compute per-memory entity boosts from entity store search.
 

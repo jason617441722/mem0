@@ -65,4 +65,9 @@ class VectorStoreConfig(BaseModel):
             config["path"] = f"/tmp/{provider}"
 
         self.config = config_class(**config)
+
+#         QdrantConfig(
+#     collection_name="memories",
+#     path="/tmp/qdrant",
+# )
         return self
